@@ -1,0 +1,7 @@
+torch>=2.0
+transformers>=4.38
+opacus>=1.4
+datasets
+presidio-analyzer
+spacy
+pyyaml
