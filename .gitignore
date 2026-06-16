@@ -7,3 +7,7 @@ logs/
 *.pt
 *.bin
 *.safetensors
+MULTIMODAL_PLAN.md
+OPTIMIZATION_PLAN.md
+UTD-MHAD/*
+graphify-out/*
