@@ -1,9 +1,13 @@
 from pathlib import Path
 import scipy
+import cv2
 import torch
-from torch.utils.data import DataLoader, random_split
-from torch.utils.data import Subset
+from torch.utils.data import DataLoader, random_split, Subset
 import numpy as np
+
+W = 100
+NUM_FRAMES = 16
+FRAME_SIZE = 112
 
 class UTDMHADDataset:
     def __init__(self, root_dir):
@@ -11,67 +15,88 @@ class UTDMHADDataset:
         self.samples = []
         self.mean = None
         self.std = None
+        self.rgb_cache = {}
+        self.iner_cache = {}
 
         for filepath in (self.root_dir / "Inertial").glob("*.mat"):
-            filename = filepath.name
+            activity, subject = self._parse(filepath.name)
+            self.samples.append({"file": filepath, "activity": activity, "subject": subject, "modality": "accel"})
+            self.samples.append({"file": filepath, "activity": activity, "subject": subject, "modality": "gyro"})
 
-            parts = filename.split("_")
+        for part in ["RGB-part1", "RGB-part2", "RGB-part3", "RGB-part4"]:
+            for filepath in (self.root_dir / part).glob("*.avi"):
+                activity, subject = self._parse(filepath.name)
+                self.samples.append({"file": filepath, "activity": activity, "subject": subject, "modality": "rgb"})
 
-            activity = int(parts[0][1:])
-            subject = int(parts[1][1:])
-
-            modality = parts[3].split(".")[0]
-            if modality == "inertial":
-                self.samples.append(
-                {
-                    "file": filepath,
-                    "activity": activity,
-                    "subject": subject,
-                    "modality": "accel",
-                })
-                self.samples.append(
-                {
-                    "file": filepath,
-                    "activity": activity,
-                    "subject": subject,
-                    "modality": "gyro",
-                })
-
+    def _parse(self, filename):
+        parts = filename.split("_")
+        return int(parts[0][1:]), int(parts[1][1:])
+    
     def __len__(self):
         return len(self.samples)
     
     def __getitem__(self, idx):
-        W = 100
         sample = self.samples[idx]
-        data = scipy.io.loadmat(sample["file"])
-        raw = data["d_iner"]
-        accel = raw[:, :3]
-        gyro = raw[:, 3:]
-        accel_window = accel[:W, :]
-        gyro_window = gyro[:W, :]
-        accel_window_tensor = torch.from_numpy(accel_window).float()
-        gyro_window_tensor = torch.from_numpy(gyro_window).float()
-        if self.mean is not None:
-            accel_window_tensor = (accel_window_tensor - self.mean[:3]) / self.std[:3]
-            gyro_window_tensor = (gyro_window_tensor - self.mean[3:]) / self.std[3:]
-        if sample["modality"] == "accel":
-            input_tensor = accel_window_tensor
-        elif sample["modality"] == "gyro":
-            input_tensor = gyro_window_tensor
-            
+        if sample["modality"] in ("accel", "gyro"):
+            input_tensor = self._load_inertial(sample)
+        else:
+            input_tensor = self._load_rgb(sample)
         return {
             "modality": sample["modality"],
             "activity": sample["activity"] - 1,
             "subject": sample["subject"] - 1,
             "input_tensor": input_tensor,
         }
-    
+
+    def _load_inertial(self, sample):
+        if sample["file"] in self.iner_cache:
+            raw = self.iner_cache[sample["file"]]
+        else:
+            raw = scipy.io.loadmat(sample["file"])["d_iner"]
+            self.iner_cache[sample["file"]] = raw
+        accel = torch.from_numpy(raw[:W, :3]).float()
+        gyro = torch.from_numpy(raw[:W, 3:]).float()
+        if self.mean is not None:
+            accel = (accel - self.mean[:3]) / self.std[:3]
+            gyro = (gyro - self.mean[3:]) / self.std[3:]
+        return accel if sample["modality"] == "accel" else gyro
+
+    def _load_rgb(self, sample):
+        if sample["file"] in self.rgb_cache:
+            return self.rgb_cache[sample["file"]]
+        cap = cv2.VideoCapture(str(sample["file"]))
+        frames = []
+        while True:
+            ok, frame = cap.read()
+            if not ok:
+                break
+            frames.append(frame)
+        cap.release()
+
+        idxs = np.linspace(0, len(frames) - 1, NUM_FRAMES).astype(int)
+        clip = [cv2.cvtColor(cv2.resize(frames[i], (FRAME_SIZE, FRAME_SIZE)), cv2.COLOR_BGR2RGB) for i in idxs]
+        clip = torch.from_numpy(np.stack(clip)).float() / 255.0
+        clip = clip.permute(0, 3, 1, 2).contiguous()
+        self.rgb_cache[sample["file"]] = clip
+        return clip
+
+
+def mixed_collate(batch):
+    return {
+        "modality": [b["modality"] for b in batch],
+        "activity": torch.tensor([b["activity"] for b in batch]),
+        "subject": torch.tensor([b["subject"] for b in batch]),
+        "input_tensor": [b["input_tensor"] for b in batch],
+    }
+
+
 def compute_normalization_stats(dataset, train_indices):
     all_rows = []
     for i in train_indices:
         sample = dataset.samples[i]
-        data = scipy.io.loadmat(sample["file"])
-        all_rows.append(data["d_iner"])
+        if sample["modality"] != "accel":
+            continue
+        all_rows.append(scipy.io.loadmat(sample["file"])["d_iner"])
     stacked = np.concatenate(all_rows, axis=0)
     mean = stacked.mean(axis=0)
     std = stacked.std(axis=0) + 1e-8
@@ -84,8 +109,8 @@ def build_utdmhad_dataloaders(root_dir, val_split=0.2, batch_size=32):
 
     train_set, val_set = random_split(dataset, [n_train, n_val])
 
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, collate_fn=mixed_collate)
+    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, collate_fn=mixed_collate)
 
     return train_loader, val_loader
 
@@ -106,8 +131,8 @@ def build_loso_dataloaders(root_dir, val_subject=8, batch_size=32):
     mean, std = compute_normalization_stats(dataset, train_indices)
     dataset.mean, dataset.std = mean, std
 
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, collate_fn=mixed_collate)
+    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, collate_fn=mixed_collate)
 
     return train_loader, val_loader
 
@@ -118,7 +143,7 @@ if __name__ == "__main__":
     print("fetching batches...")
     for batch in range(10):
         batch = next(iter(train_loader))
-        print(batch["input_tensor"].shape, batch["modality"][0], batch["activity"][0])
+        print(batch["input_tensor"][0].shape, batch["modality"][0], batch["activity"][0])
 
 
         

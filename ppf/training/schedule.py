@@ -1,7 +1,7 @@
 import math
 
 
-def lambda_schedule(epoch: int, total_epochs: int, lambda_max: float = 1.0, gamma: float = 2.0) -> float:
+def lambda_schedule(epoch: int, total_epochs: int, lambda_max: float = 1.0, gamma: float = 8.0) -> float:
     """
     Sigmoid warmup schedule for λ (Ganin et al., 2016, Section 5.2.2).
 

@@ -1,6 +1,7 @@
 import torch
 from ppf.data.dataloader import build_loso_dataloaders
 from ppf.models.accelEncoder import AccelEncoder, GyroEncoder
+from ppf.models.rgb_encoder import RGBEncoder
 from ppf.models.projector import Projector
 from ppf.models.task_head import TaskHead
 from ppf.models.identity_probe import IdentityProbe
@@ -25,10 +26,12 @@ def main():
     encoders = {
         "accel": AccelEncoder(),
         "gyro":  GyroEncoder(),
+        "rgb":   RGBEncoder(),
     }
     projectors = {
         "accel": Projector(128),
         "gyro":  Projector(128),
+        "rgb":   Projector(128),
     }
     task_head = TaskHead(hidden_size=512, num_classes=27)
     probe     = IdentityProbe(input_dim=512, output_dim=8)

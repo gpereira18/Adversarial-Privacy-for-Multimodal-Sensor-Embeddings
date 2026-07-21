@@ -5,5 +5,5 @@ opacus>=1.4
 pyyaml
 tqdm
 Pillow
-
+opencv-python
 

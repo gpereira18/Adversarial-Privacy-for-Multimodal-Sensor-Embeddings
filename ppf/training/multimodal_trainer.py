@@ -26,13 +26,11 @@ class MultimodalTrainer:
         self.task_head = task_head
         self.probe = probe
 
-        enc_params = (
-            list(self.encoders["accel"].parameters()) +
-            list(self.encoders["gyro"].parameters()) +
-            list(self.projectors["accel"].parameters()) +
-            list(self.projectors["gyro"].parameters()) +
-            list(self.task_head.parameters())
-        )
+        enc_params = list(self.task_head.parameters())
+        for enc in self.encoders.values():
+            enc_params += list(enc.parameters())
+        for proj in self.projectors.values():
+            enc_params += list(proj.parameters())
         self.opt_encoder = torch.optim.Adam(enc_params, lr=lr_encoder)
         self.opt_probe = torch.optim.Adam(self.probe.parameters(), lr=lr_probe)
         self.lr_encoder = lr_encoder
@@ -52,15 +50,18 @@ class MultimodalTrainer:
             mod.to(self.device)
 
     def _compute_embeddings(self,batch):
-        batch_size = len(batch["activity"])
-        embeddings = torch.zeros(batch_size, 512).to(self.device)
+        all_idx = []
+        all_emb = []
         for modality in self.encoders.keys():
-            mask = torch.tensor([m == modality for m in batch["modality"]])  # CPU
-            if mask.any():
-                inputs = batch["input_tensor"][mask].to(self.device)  # index on CPU, then move
+            idx = [i for i, m in enumerate(batch["modality"]) if m == modality]
+            if idx:
+                inputs = torch.stack([batch["input_tensor"][i] for i in idx]).to(self.device)
                 emb = self.projectors[modality](self.encoders[modality](inputs))
-                embeddings[mask.to(self.device)] = emb  # mask must be on device for assignment
-        return embeddings
+                all_idx.extend(idx)
+                all_emb.append(emb)
+        cat = torch.cat(all_emb, dim=0)
+        order = torch.argsort(torch.tensor(all_idx, device=self.device))
+        return cat[order]
 
     def train_epoch(self, train_loader, epoch):
         self._update_schedule(epoch)
