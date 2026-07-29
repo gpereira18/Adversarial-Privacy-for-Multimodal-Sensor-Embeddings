@@ -1,4 +1,5 @@
 torch>=2.0
+torchvision>=0.15
 scipy
 transformers>=4.38
 opacus>=1.4

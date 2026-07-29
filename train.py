@@ -31,7 +31,7 @@ def main():
     projectors = {
         "accel": Projector(128),
         "gyro":  Projector(128),
-        "rgb":   Projector(128),
+        "rgb":   Projector(512),
     }
     task_head = TaskHead(hidden_size=512, num_classes=27)
     probe     = IdentityProbe(input_dim=512, output_dim=8)

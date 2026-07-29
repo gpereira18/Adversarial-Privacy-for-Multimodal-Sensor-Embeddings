@@ -8,6 +8,8 @@ import numpy as np
 W = 100
 NUM_FRAMES = 16
 FRAME_SIZE = 112
+KINETICS_MEAN = torch.tensor([0.43216, 0.394666, 0.37645]).view(3, 1, 1)
+KINETICS_STD = torch.tensor([0.22803, 0.22145, 0.216989]).view(3, 1, 1)
 
 class UTDMHADDataset:
     def __init__(self, root_dir):
@@ -76,7 +78,8 @@ class UTDMHADDataset:
         idxs = np.linspace(0, len(frames) - 1, NUM_FRAMES).astype(int)
         clip = [cv2.cvtColor(cv2.resize(frames[i], (FRAME_SIZE, FRAME_SIZE)), cv2.COLOR_BGR2RGB) for i in idxs]
         clip = torch.from_numpy(np.stack(clip)).float() / 255.0
-        clip = clip.permute(0, 3, 1, 2).contiguous()
+        clip = clip.permute(0, 3, 1, 2)
+        clip = ((clip - KINETICS_MEAN) / KINETICS_STD).contiguous()
         self.rgb_cache[sample["file"]] = clip
         return clip
 
