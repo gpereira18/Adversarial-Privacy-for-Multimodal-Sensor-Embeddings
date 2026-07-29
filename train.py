@@ -50,13 +50,14 @@ def main():
     for epoch in range(1, trainer.total_epochs + 1):
         losses  = trainer.train_epoch(train_loader, epoch)
         metrics = trainer.evaluate(val_loader, train_loader)
+        task = metrics["task"]
+        probe = metrics["probe"]
         print(
-            f"Epoch {epoch:2d} | "
-            f"λ={losses['lambda']:.3f}  "
-            f"task_loss={losses['task_loss']:.4f}  "
-            f"probe_loss={losses['probe_loss']:.4f} | "
-            f"task_acc={metrics['task_accuracy']:.3f}  "
-            f"probe_acc={metrics['probe_accuracy']:.3f}"
+            f"Epoch {epoch:2d} | λ={losses['lambda']:.3f} | "
+            f"task all={task['all']:.3f} "
+            f"(accel={task.get('accel', 0):.3f} gyro={task.get('gyro', 0):.3f} rgb={task.get('rgb', 0):.3f}) | "
+            f"probe all={probe['all']:.3f} "
+            f"(accel={probe.get('accel', 0):.3f} gyro={probe.get('gyro', 0):.3f} rgb={probe.get('rgb', 0):.3f})"
         )
 
 

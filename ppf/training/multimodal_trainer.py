@@ -124,22 +124,25 @@ class MultimodalTrainer:
         for mod in self.projectors.values():
             mod.eval()
 
+        task_correct, task_total = {}, {}
+        probe_correct, probe_total = {}, {}
+
         with torch.no_grad():
-            task_correct, total_task = 0, 0
             for batch in task_loader:
                 activity = batch["activity"].to(self.device)
                 emb = self._compute_embeddings(batch)
-                task_preds = self.task_head(emb).argmax(dim=1)
-                task_correct += (task_preds == activity).sum().item()
-                total_task += len(activity)
-            
-            probe_correct, total_probe = 0, 0
+                hit = (self.task_head(emb).argmax(dim=1) == activity)
+                for i, m in enumerate(batch["modality"]):
+                    task_total[m] = task_total.get(m, 0) + 1
+                    task_correct[m] = task_correct.get(m, 0) + hit[i].item()
+
             for batch in probe_loader:
                 subject = batch["subject"].to(self.device)
                 emb = self._compute_embeddings(batch)
-                probe_preds = self.probe(emb).argmax(dim=1)
-                probe_correct += (probe_preds == subject).sum().item()
-                total_probe += len(subject)
+                hit = (self.probe(emb).argmax(dim=1) == subject)
+                for i, m in enumerate(batch["modality"]):
+                    probe_total[m] = probe_total.get(m, 0) + 1
+                    probe_correct[m] = probe_correct.get(m, 0) + hit[i].item()
 
         self.task_head.train()
         self.probe.train()
@@ -148,10 +151,12 @@ class MultimodalTrainer:
         for mod in self.projectors.values():
             mod.train()
 
-        return {
-            "task_accuracy":  task_correct  / total_task,
-            "probe_accuracy": probe_correct / total_probe,
-        }
+        task_acc = {m: task_correct[m] / task_total[m] for m in task_total}
+        probe_acc = {m: probe_correct[m] / probe_total[m] for m in probe_total}
+        task_acc["all"] = sum(task_correct.values()) / sum(task_total.values())
+        probe_acc["all"] = sum(probe_correct.values()) / sum(probe_total.values())
+
+        return {"task": task_acc, "probe": probe_acc}
             
 
            
