@@ -4,6 +4,7 @@ scipy
 transformers>=4.38
 opacus>=1.4
 pyyaml
+optuna
 tqdm
 Pillow
 opencv-python

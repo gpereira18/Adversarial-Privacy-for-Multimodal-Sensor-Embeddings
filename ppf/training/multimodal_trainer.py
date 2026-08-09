@@ -18,6 +18,7 @@ class MultimodalTrainer:
         lambda_max=1.0,
         total_epochs=15,
         warmup_epochs=5,
+        k=5,
         
         ):
         
@@ -40,6 +41,7 @@ class MultimodalTrainer:
         self.lambda_max = lambda_max
         self.total_epochs = total_epochs
         self.warmup_epochs = warmup_epochs
+        self.k = k
 
         self.device = torch.device(device)
         self.task_head.to(self.device)
@@ -74,7 +76,7 @@ class MultimodalTrainer:
             with torch.no_grad():
                 emb_frozen = self._compute_embeddings(batch)
 
-            for _ in range(5):
+            for _ in range(self.k):
                 self.opt_probe.zero_grad()
                 probe_logits = self.probe(emb_frozen)
                 probe_loss = F.cross_entropy(probe_logits, subject)
