@@ -18,6 +18,7 @@ def parse_args():
     p.add_argument("--k", type=int, default=5)
     p.add_argument("--warmup_epochs", type=int, default=2)
     p.add_argument("--epochs", type=int, default=100)
+    p.add_argument("--clip_norm", type=float, default=1.0)
     p.add_argument("--out", type=str, default="checkpoints/model.pt")
     return p.parse_args()
 
@@ -64,6 +65,7 @@ def main():
         lr_probe=args.lr_probe,
         lr_encoder=args.lr_encoder,
         k=args.k,
+        clip_norm=args.clip_norm,
     )
 
     for epoch in range(1, trainer.total_epochs + 1):

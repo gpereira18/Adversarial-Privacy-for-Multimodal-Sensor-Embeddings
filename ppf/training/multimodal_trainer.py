@@ -19,7 +19,8 @@ class MultimodalTrainer:
         total_epochs=15,
         warmup_epochs=5,
         k=5,
-        
+        clip_norm=1.0,
+
         ):
         
         self.encoders = encoders
@@ -32,8 +33,10 @@ class MultimodalTrainer:
             enc_params += list(enc.parameters())
         for proj in self.projectors.values():
             enc_params += list(proj.parameters())
+        self.enc_params = enc_params
         self.opt_encoder = torch.optim.Adam(enc_params, lr=lr_encoder)
         self.opt_probe = torch.optim.Adam(self.probe.parameters(), lr=lr_probe)
+        self.clip_norm = clip_norm
         self.lr_encoder = lr_encoder
         self.lr_probe = lr_probe
         self.lr_projector = lr_projector
@@ -81,6 +84,8 @@ class MultimodalTrainer:
                 probe_logits = self.probe(emb_frozen)
                 probe_loss = F.cross_entropy(probe_logits, subject)
                 probe_loss.backward()
+                if self.clip_norm:
+                    torch.nn.utils.clip_grad_norm_(self.probe.parameters(), self.clip_norm)
                 self.opt_probe.step()
 
             emb = self._compute_embeddings(batch)
@@ -91,6 +96,9 @@ class MultimodalTrainer:
             probe_logits = self.probe(grad_reverse(emb, self.current_lambda))
             loss = F.cross_entropy(task_logits, activity) + F.cross_entropy(probe_logits, subject)
             loss.backward()
+            if self.clip_norm:
+                torch.nn.utils.clip_grad_norm_(self.enc_params, self.clip_norm)
+                torch.nn.utils.clip_grad_norm_(self.probe.parameters(), self.clip_norm)
             self.opt_encoder.step()
             self.opt_probe.step()
 
