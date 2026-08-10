@@ -1,3 +1,4 @@
+import argparse
 import torch
 from ppf.data.dataloader import build_loso_dataloaders
 from ppf.models.accelEncoder import AccelEncoder, GyroEncoder
@@ -8,7 +9,21 @@ from ppf.models.identity_probe import IdentityProbe
 from ppf.training.multimodal_trainer import MultimodalTrainer
 
 
+def parse_args():
+    p = argparse.ArgumentParser()
+    p.add_argument("--lambda_max", type=float, default=2.13)
+    p.add_argument("--lr_probe", type=float, default=0.0045)
+    p.add_argument("--k", type=int, default=5)
+    p.add_argument("--warmup_epochs", type=int, default=2)
+    p.add_argument("--epochs", type=int, default=100)
+    return p.parse_args()
+
+
 def main():
+    args = parse_args()
+    print(f"Config: lambda_max={args.lambda_max} lr_probe={args.lr_probe} "
+          f"k={args.k} warmup_epochs={args.warmup_epochs} epochs={args.epochs}")
+
     if torch.backends.mps.is_available():
         device = "mps"
     elif torch.cuda.is_available():
@@ -42,9 +57,11 @@ def main():
         task_head=task_head,
         probe=probe,
         device=device,
-        total_epochs=100,
-        warmup_epochs=10,
-        lambda_max=1.0,
+        total_epochs=args.epochs,
+        warmup_epochs=args.warmup_epochs,
+        lambda_max=args.lambda_max,
+        lr_probe=args.lr_probe,
+        k=args.k,
     )
 
     for epoch in range(1, trainer.total_epochs + 1):
