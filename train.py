@@ -2,7 +2,7 @@ import argparse
 from pathlib import Path
 import torch
 from ppf.data.dataloader import build_loso_dataloaders
-from ppf.models.accelEncoder import AccelEncoder, GyroEncoder
+from ppf.models.imu_encoder import IMUEncoder
 from ppf.models.rgb_encoder import RGBEncoder
 from ppf.models.projector import Projector
 from ppf.models.task_head import TaskHead
@@ -14,6 +14,7 @@ def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--lambda_max", type=float, default=2.13)
     p.add_argument("--lr_probe", type=float, default=0.0045)
+    p.add_argument("--lr_encoder", type=float, default=1e-3)
     p.add_argument("--k", type=int, default=5)
     p.add_argument("--warmup_epochs", type=int, default=2)
     p.add_argument("--epochs", type=int, default=100)
@@ -41,14 +42,12 @@ def main():
     print(f"Train batches: {len(train_loader)}, Val batches: {len(val_loader)}")
 
     encoders = {
-        "accel": AccelEncoder(),
-        "gyro":  GyroEncoder(),
-        "rgb":   RGBEncoder(),
+        "imu": IMUEncoder(),
+        "rgb": RGBEncoder(),
     }
     projectors = {
-        "accel": Projector(256),
-        "gyro":  Projector(256),
-        "rgb":   Projector(512),
+        "imu": Projector(256),
+        "rgb": Projector(512),
     }
     task_head = TaskHead(hidden_size=512, num_classes=27)
     probe     = IdentityProbe(input_dim=512, output_dim=8)
@@ -63,6 +62,7 @@ def main():
         warmup_epochs=args.warmup_epochs,
         lambda_max=args.lambda_max,
         lr_probe=args.lr_probe,
+        lr_encoder=args.lr_encoder,
         k=args.k,
     )
 
@@ -75,17 +75,16 @@ def main():
         print(
             f"Epoch {epoch:2d} | λ={losses['lambda']:.3f} | "
             f"task all={task_acc['all']:.3f} "
-            f"(accel={task_acc.get('accel', 0):.3f} gyro={task_acc.get('gyro', 0):.3f} rgb={task_acc.get('rgb', 0):.3f}) | "
+            f"(imu={task_acc.get('imu', 0):.3f} rgb={task_acc.get('rgb', 0):.3f}) | "
             f"probe all={probe_acc['all']:.3f} "
-            f"(accel={probe_acc.get('accel', 0):.3f} gyro={probe_acc.get('gyro', 0):.3f} rgb={probe_acc.get('rgb', 0):.3f}) | "
+            f"(imu={probe_acc.get('imu', 0):.3f} rgb={probe_acc.get('rgb', 0):.3f}) | "
             f"pred_classes={metrics['probe_n_classes']} top={metrics['probe_top_share']:.2f}{flag}"
         )
 
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     torch.save({
         "config": vars(args),
-        "accel": encoders["accel"].state_dict(),
-        "gyro": encoders["gyro"].state_dict(),
+        "imu": encoders["imu"].state_dict(),
         "projectors": {k: v.state_dict() for k, v in projectors.items()},
         "task_head": task_head.state_dict(),
         "probe": probe.state_dict(),

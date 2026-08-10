@@ -5,8 +5,7 @@ import torch
 from torch.utils.data import DataLoader, random_split, Subset
 import numpy as np
 
-W = 100
-STRIDE = 50
+SEQ_LEN = 128
 NUM_FRAMES = 16
 FRAME_SIZE = 112
 KINETICS_MEAN = torch.tensor([0.43216, 0.394666, 0.37645]).view(3, 1, 1)
@@ -25,15 +24,12 @@ class UTDMHADDataset:
             activity, subject = self._parse(filepath.name)
             raw = scipy.io.loadmat(filepath)["d_iner"]
             self.iner_cache[filepath] = raw
-            for start in self._window_starts(raw.shape[0]):
-                for modality in ("accel", "gyro"):
-                    self.samples.append({
-                        "file": filepath,
-                        "activity": activity,
-                        "subject": subject,
-                        "modality": modality,
-                        "start": start,
-                    })
+            self.samples.append({
+                "file": filepath,
+                "activity": activity,
+                "subject": subject,
+                "modality": "imu",
+            })
 
         for part in ["RGB-part1", "RGB-part2", "RGB-part3", "RGB-part4"]:
             for filepath in (self.root_dir / part).glob("*.avi"):
@@ -44,17 +40,12 @@ class UTDMHADDataset:
         parts = filename.split("_")
         return int(parts[0][1:]), int(parts[1][1:])
 
-    def _window_starts(self, length):
-        if length <= W:
-            return [0]
-        return list(range(0, length - W + 1, STRIDE))
-    
     def __len__(self):
         return len(self.samples)
-    
+
     def __getitem__(self, idx):
         sample = self.samples[idx]
-        if sample["modality"] in ("accel", "gyro"):
+        if sample["modality"] == "imu":
             input_tensor = self._load_inertial(sample)
         else:
             input_tensor = self._load_rgb(sample)
@@ -67,17 +58,11 @@ class UTDMHADDataset:
 
     def _load_inertial(self, sample):
         raw = self.iner_cache[sample["file"]]
-        start = sample["start"]
-        window = raw[start:start + W]
-        if window.shape[0] < W:
-            pad = np.zeros((W - window.shape[0], window.shape[1]), dtype=window.dtype)
-            window = np.concatenate([window, pad], axis=0)
-        accel = torch.from_numpy(window[:, :3]).float()
-        gyro = torch.from_numpy(window[:, 3:]).float()
+        idxs = np.linspace(0, raw.shape[0] - 1, SEQ_LEN).astype(int)
+        seq = torch.from_numpy(raw[idxs]).float()
         if self.mean is not None:
-            accel = (accel - self.mean[:3]) / self.std[:3]
-            gyro = (gyro - self.mean[3:]) / self.std[3:]
-        return accel if sample["modality"] == "accel" else gyro
+            seq = (seq - self.mean) / self.std
+        return seq
 
     def _load_rgb(self, sample):
         if sample["file"] in self.rgb_cache:
@@ -114,7 +99,7 @@ def compute_normalization_stats(dataset, train_indices):
     seen = set()
     for i in train_indices:
         sample = dataset.samples[i]
-        if sample["modality"] != "accel" or sample["file"] in seen:
+        if sample["modality"] != "imu" or sample["file"] in seen:
             continue
         seen.add(sample["file"])
         all_rows.append(dataset.iner_cache[sample["file"]])

@@ -1,7 +1,7 @@
 import optuna 
 import torch
 from ppf.data.dataloader import build_loso_dataloaders
-from ppf.models.accelEncoder import AccelEncoder, GyroEncoder
+from ppf.models.imu_encoder import IMUEncoder
 from ppf.models.rgb_encoder import RGBEncoder
 from ppf.models.projector import Projector
 from ppf.models.task_head import TaskHead
@@ -29,14 +29,12 @@ def objective(trial):
     warmup_epochs = trial.suggest_int("warmup_epochs", 0, 15)
 
     encoders = {
-        "accel": AccelEncoder(),
-        "gyro":  GyroEncoder(),
-        "rgb":   RGBEncoder(),
+        "imu": IMUEncoder(),
+        "rgb": RGBEncoder(),
     }
     projectors = {
-        "accel": Projector(256),
-        "gyro":  Projector(256),
-        "rgb":   Projector(512),
+        "imu": Projector(256),
+        "rgb": Projector(512),
     }
     task_head = TaskHead(hidden_size=512, num_classes=27)
     probe     = IdentityProbe(input_dim=512, output_dim=8)

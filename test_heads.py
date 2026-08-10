@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 
 from ppf.data.dataloader import build_loso_dataloaders
-from ppf.models.accelEncoder import AccelEncoder, GyroEncoder
+from ppf.models.imu_encoder import IMUEncoder
 from ppf.models.projector import Projector
 from ppf.models.task_head import TaskHead
 from ppf.models.identity_probe import IdentityProbe
@@ -21,18 +21,16 @@ def main():
     train_loader, _ = build_loso_dataloaders("UTD-MHAD", val_subject=8, batch_size=32)
     print(f"Train batches: {len(train_loader)}")
 
-    encoders = {"accel": AccelEncoder(), "gyro": GyroEncoder()}
-    projectors = {"accel": Projector(128), "gyro": Projector(128)}
+    encoders = {"imu": IMUEncoder()}
+    projectors = {"imu": Projector(256)}
     task_head = TaskHead(hidden_size=512, num_classes=27)
     probe = IdentityProbe(input_dim=512, output_dim=8)
 
     trainer = MultimodalTrainer(encoders, projectors, task_head, probe, device=device)
 
     params = (
-        list(encoders["accel"].parameters())
-        + list(encoders["gyro"].parameters())
-        + list(projectors["accel"].parameters())
-        + list(projectors["gyro"].parameters())
+        list(encoders["imu"].parameters())
+        + list(projectors["imu"].parameters())
         + list(task_head.parameters())
         + list(probe.parameters())
     )
