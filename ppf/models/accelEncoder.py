@@ -14,14 +14,12 @@ class AccelEncoder(nn.Module):
             nn.Conv1d(64, 128, 3, padding=1),
             nn.BatchNorm1d(128),
             nn.ReLU(),
-            nn.AdaptiveAvgPool1d(1),
         )
 
     def forward(self, x):
-        #x: (batch, 100, 3)
-        x = x.transpose(1, 2) # -> (batch, 3, 100)
+        x = x.transpose(1, 2)
         x = self.layers(x)
-        return x.squeeze(-1)
+        return torch.cat([x.mean(dim=2), x.max(dim=2).values], dim=1)
 
 
 class GyroEncoder(AccelEncoder):

@@ -34,8 +34,8 @@ def objective(trial):
         "rgb":   RGBEncoder(),
     }
     projectors = {
-        "accel": Projector(128),
-        "gyro":  Projector(128),
+        "accel": Projector(256),
+        "gyro":  Projector(256),
         "rgb":   Projector(512),
     }
     task_head = TaskHead(hidden_size=512, num_classes=27)

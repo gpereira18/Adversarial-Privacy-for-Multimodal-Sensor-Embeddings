@@ -6,6 +6,7 @@ from torch.utils.data import DataLoader, random_split, Subset
 import numpy as np
 
 W = 100
+STRIDE = 50
 NUM_FRAMES = 16
 FRAME_SIZE = 112
 KINETICS_MEAN = torch.tensor([0.43216, 0.394666, 0.37645]).view(3, 1, 1)
@@ -22,8 +23,17 @@ class UTDMHADDataset:
 
         for filepath in (self.root_dir / "Inertial").glob("*.mat"):
             activity, subject = self._parse(filepath.name)
-            self.samples.append({"file": filepath, "activity": activity, "subject": subject, "modality": "accel"})
-            self.samples.append({"file": filepath, "activity": activity, "subject": subject, "modality": "gyro"})
+            raw = scipy.io.loadmat(filepath)["d_iner"]
+            self.iner_cache[filepath] = raw
+            for start in self._window_starts(raw.shape[0]):
+                for modality in ("accel", "gyro"):
+                    self.samples.append({
+                        "file": filepath,
+                        "activity": activity,
+                        "subject": subject,
+                        "modality": modality,
+                        "start": start,
+                    })
 
         for part in ["RGB-part1", "RGB-part2", "RGB-part3", "RGB-part4"]:
             for filepath in (self.root_dir / part).glob("*.avi"):
@@ -33,6 +43,11 @@ class UTDMHADDataset:
     def _parse(self, filename):
         parts = filename.split("_")
         return int(parts[0][1:]), int(parts[1][1:])
+
+    def _window_starts(self, length):
+        if length <= W:
+            return [0]
+        return list(range(0, length - W + 1, STRIDE))
     
     def __len__(self):
         return len(self.samples)
@@ -51,13 +66,14 @@ class UTDMHADDataset:
         }
 
     def _load_inertial(self, sample):
-        if sample["file"] in self.iner_cache:
-            raw = self.iner_cache[sample["file"]]
-        else:
-            raw = scipy.io.loadmat(sample["file"])["d_iner"]
-            self.iner_cache[sample["file"]] = raw
-        accel = torch.from_numpy(raw[:W, :3]).float()
-        gyro = torch.from_numpy(raw[:W, 3:]).float()
+        raw = self.iner_cache[sample["file"]]
+        start = sample["start"]
+        window = raw[start:start + W]
+        if window.shape[0] < W:
+            pad = np.zeros((W - window.shape[0], window.shape[1]), dtype=window.dtype)
+            window = np.concatenate([window, pad], axis=0)
+        accel = torch.from_numpy(window[:, :3]).float()
+        gyro = torch.from_numpy(window[:, 3:]).float()
         if self.mean is not None:
             accel = (accel - self.mean[:3]) / self.std[:3]
             gyro = (gyro - self.mean[3:]) / self.std[3:]
@@ -95,11 +111,13 @@ def mixed_collate(batch):
 
 def compute_normalization_stats(dataset, train_indices):
     all_rows = []
+    seen = set()
     for i in train_indices:
         sample = dataset.samples[i]
-        if sample["modality"] != "accel":
+        if sample["modality"] != "accel" or sample["file"] in seen:
             continue
-        all_rows.append(scipy.io.loadmat(sample["file"])["d_iner"])
+        seen.add(sample["file"])
+        all_rows.append(dataset.iner_cache[sample["file"]])
     stacked = np.concatenate(all_rows, axis=0)
     mean = stacked.mean(axis=0)
     std = stacked.std(axis=0) + 1e-8
