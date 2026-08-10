@@ -128,6 +128,7 @@ class MultimodalTrainer:
 
         task_correct, task_total = {}, {}
         probe_correct, probe_total = {}, {}
+        probe_pred_counts = {}
 
         with torch.no_grad():
             for batch in task_loader:
@@ -141,7 +142,10 @@ class MultimodalTrainer:
             for batch in probe_loader:
                 subject = batch["subject"].to(self.device)
                 emb = self._compute_embeddings(batch)
-                hit = (self.probe(emb).argmax(dim=1) == subject)
+                preds = self.probe(emb).argmax(dim=1)
+                hit = (preds == subject)
+                for p in preds.tolist():
+                    probe_pred_counts[p] = probe_pred_counts.get(p, 0) + 1
                 for i, m in enumerate(batch["modality"]):
                     probe_total[m] = probe_total.get(m, 0) + 1
                     probe_correct[m] = probe_correct.get(m, 0) + hit[i].item()
@@ -158,7 +162,15 @@ class MultimodalTrainer:
         task_acc["all"] = sum(task_correct.values()) / sum(task_total.values())
         probe_acc["all"] = sum(probe_correct.values()) / sum(probe_total.values())
 
-        return {"task": task_acc, "probe": probe_acc}
+        n_probe = sum(probe_pred_counts.values())
+        top_share = max(probe_pred_counts.values()) / n_probe if n_probe else 0.0
+
+        return {
+            "task": task_acc,
+            "probe": probe_acc,
+            "probe_n_classes": len(probe_pred_counts),
+            "probe_top_share": top_share,
+        }
             
 
            

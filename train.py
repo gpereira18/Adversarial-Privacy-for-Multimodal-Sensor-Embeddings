@@ -1,4 +1,5 @@
 import argparse
+from pathlib import Path
 import torch
 from ppf.data.dataloader import build_loso_dataloaders
 from ppf.models.accelEncoder import AccelEncoder, GyroEncoder
@@ -16,6 +17,7 @@ def parse_args():
     p.add_argument("--k", type=int, default=5)
     p.add_argument("--warmup_epochs", type=int, default=2)
     p.add_argument("--epochs", type=int, default=100)
+    p.add_argument("--out", type=str, default="checkpoints/model.pt")
     return p.parse_args()
 
 
@@ -67,15 +69,29 @@ def main():
     for epoch in range(1, trainer.total_epochs + 1):
         losses  = trainer.train_epoch(train_loader, epoch)
         metrics = trainer.evaluate(val_loader, train_loader)
-        task = metrics["task"]
-        probe = metrics["probe"]
+        task_acc = metrics["task"]
+        probe_acc = metrics["probe"]
+        flag = "  <-- COLLAPSED" if metrics["probe_n_classes"] <= 2 else ""
         print(
             f"Epoch {epoch:2d} | λ={losses['lambda']:.3f} | "
-            f"task all={task['all']:.3f} "
-            f"(accel={task.get('accel', 0):.3f} gyro={task.get('gyro', 0):.3f} rgb={task.get('rgb', 0):.3f}) | "
-            f"probe all={probe['all']:.3f} "
-            f"(accel={probe.get('accel', 0):.3f} gyro={probe.get('gyro', 0):.3f} rgb={probe.get('rgb', 0):.3f})"
+            f"task all={task_acc['all']:.3f} "
+            f"(accel={task_acc.get('accel', 0):.3f} gyro={task_acc.get('gyro', 0):.3f} rgb={task_acc.get('rgb', 0):.3f}) | "
+            f"probe all={probe_acc['all']:.3f} "
+            f"(accel={probe_acc.get('accel', 0):.3f} gyro={probe_acc.get('gyro', 0):.3f} rgb={probe_acc.get('rgb', 0):.3f}) | "
+            f"pred_classes={metrics['probe_n_classes']} top={metrics['probe_top_share']:.2f}{flag}"
         )
+
+    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+    torch.save({
+        "config": vars(args),
+        "accel": encoders["accel"].state_dict(),
+        "gyro": encoders["gyro"].state_dict(),
+        "projectors": {k: v.state_dict() for k, v in projectors.items()},
+        "task_head": task_head.state_dict(),
+        "probe": probe.state_dict(),
+        "final_metrics": metrics,
+    }, args.out)
+    print(f"Saved checkpoint to {args.out}")
 
 
 if __name__ == "__main__":
