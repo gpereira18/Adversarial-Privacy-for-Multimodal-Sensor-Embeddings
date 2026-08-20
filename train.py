@@ -19,6 +19,7 @@ def parse_args():
     p.add_argument("--warmup_epochs", type=int, default=2)
     p.add_argument("--epochs", type=int, default=100)
     p.add_argument("--clip_norm", type=float, default=1.0)
+    p.add_argument("--rgb_hidden", type=int, default=512)
     p.add_argument("--out", type=str, default="checkpoints/model.pt")
     return p.parse_args()
 
@@ -48,7 +49,7 @@ def main():
     }
     projectors = {
         "imu": Projector(256),
-        "rgb": Projector(512),
+        "rgb": Projector(512, hidden=args.rgb_hidden or None),
     }
     task_head = TaskHead(hidden_size=512, num_classes=27)
     probe     = IdentityProbe(input_dim=512, output_dim=8)
