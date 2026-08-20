@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader, random_split, Subset
 import numpy as np
 
 SEQ_LEN = 128
-NUM_FRAMES = 16
+NUM_FRAMES = 32
 FRAME_SIZE = 112
 KINETICS_MEAN = torch.tensor([0.43216, 0.394666, 0.37645]).view(3, 1, 1)
 KINETICS_STD = torch.tensor([0.22803, 0.22145, 0.216989]).view(3, 1, 1)
