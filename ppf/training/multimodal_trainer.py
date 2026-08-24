@@ -20,6 +20,8 @@ class MultimodalTrainer:
         warmup_epochs=5,
         k=5,
         clip_norm=1.0,
+        lr_backbone=None,
+        backbone_warmup=0,
 
         ):
         
@@ -28,13 +30,32 @@ class MultimodalTrainer:
         self.task_head = task_head
         self.probe = probe
 
-        enc_params = list(self.task_head.parameters())
+        backbone_params, other_params = [], []
         for enc in self.encoders.values():
-            enc_params += list(enc.parameters())
+            bb = getattr(enc, "backbone", None)
+            bb_ids = {id(p) for p in bb.parameters()} if bb is not None else set()
+            for p in enc.parameters():
+                if not p.requires_grad:
+                    continue
+                if id(p) in bb_ids:
+                    backbone_params.append(p)
+                else:
+                    other_params.append(p)
+        other_params += [p for p in self.task_head.parameters() if p.requires_grad]
         for proj in self.projectors.values():
-            enc_params += list(proj.parameters())
-        self.enc_params = enc_params
-        self.opt_encoder = torch.optim.Adam(enc_params, lr=lr_encoder)
+            other_params += [p for p in proj.parameters() if p.requires_grad]
+
+        groups = [{"params": other_params, "lr": lr_encoder}]
+        if backbone_params:
+            groups.append({"params": backbone_params,
+                           "lr": lr_backbone if lr_backbone else lr_encoder})
+        self.enc_params = other_params + backbone_params
+        self.backbone_params = backbone_params
+        self.backbone_warmup = backbone_warmup
+        self.opt_encoder = torch.optim.Adam(groups)
+        self.base_lrs = [g["lr"] for g in self.opt_encoder.param_groups]
+        print(f"trainable: encoder/proj/head={sum(p.numel() for p in other_params)/1e6:.2f}M  "
+              f"backbone={sum(p.numel() for p in backbone_params)/1e6:.2f}M")
         self.opt_probe = torch.optim.Adam(self.probe.parameters(), lr=lr_probe)
         self.clip_norm = clip_norm
         self.lr_encoder = lr_encoder
@@ -122,9 +143,14 @@ class MultimodalTrainer:
                 adv_epoch, adv_total, self.lambda_max
             )
 
-        new_lr_enc = lr_schedule(epoch, self.total_epochs, self.lr_encoder)
-        for pg in self.opt_encoder.param_groups:
-            pg["lr"] = new_lr_enc
+        if self.backbone_params and self.backbone_warmup:
+            unfrozen = epoch > self.backbone_warmup
+            for p in self.backbone_params:
+                p.requires_grad = unfrozen
+
+        factor = lr_schedule(epoch, self.total_epochs, 1.0)
+        for pg, base in zip(self.opt_encoder.param_groups, self.base_lrs):
+            pg["lr"] = base * factor
             
     def evaluate(self, task_loader, probe_loader):
         self.task_head.eval()

@@ -33,6 +33,11 @@ def build_frozen(ckpt, device):
     projectors = {"imu": Projector(256), "rgb": Projector(512, hidden=rgb_hidden)}
 
     encoders["imu"].load_state_dict(ckpt["imu"])
+    if "rgb" in ckpt:
+        encoders["rgb"].load_state_dict(ckpt["rgb"])
+        print("loaded fine-tuned RGB backbone from checkpoint")
+    else:
+        print("RGB backbone was frozen; using pretrained Kinetics weights")
     for name, proj in projectors.items():
         proj.load_state_dict(ckpt["projectors"][name])
 

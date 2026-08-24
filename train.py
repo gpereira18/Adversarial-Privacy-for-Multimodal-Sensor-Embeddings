@@ -20,6 +20,10 @@ def parse_args():
     p.add_argument("--epochs", type=int, default=100)
     p.add_argument("--clip_norm", type=float, default=1.0)
     p.add_argument("--rgb_hidden", type=int, default=512)
+    p.add_argument("--rgb_unfreeze", type=str, default="layer4",
+                   choices=["none", "layer4", "all"])
+    p.add_argument("--lr_backbone", type=float, default=1e-4)
+    p.add_argument("--backbone_warmup", type=int, default=10)
     p.add_argument("--out", type=str, default="checkpoints/model.pt")
     return p.parse_args()
 
@@ -45,7 +49,7 @@ def main():
 
     encoders = {
         "imu": IMUEncoder(),
-        "rgb": RGBEncoder(),
+        "rgb": RGBEncoder(unfreeze=args.rgb_unfreeze),
     }
     projectors = {
         "imu": Projector(256),
@@ -67,6 +71,8 @@ def main():
         lr_encoder=args.lr_encoder,
         k=args.k,
         clip_norm=args.clip_norm,
+        lr_backbone=args.lr_backbone,
+        backbone_warmup=args.backbone_warmup,
     )
 
     for epoch in range(1, trainer.total_epochs + 1):
@@ -85,14 +91,17 @@ def main():
         )
 
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    torch.save({
+    ckpt = {
         "config": vars(args),
         "imu": encoders["imu"].state_dict(),
         "projectors": {k: v.state_dict() for k, v in projectors.items()},
         "task_head": task_head.state_dict(),
         "probe": probe.state_dict(),
         "final_metrics": metrics,
-    }, args.out)
+    }
+    if args.rgb_unfreeze != "none":
+        ckpt["rgb"] = encoders["rgb"].state_dict()
+    torch.save(ckpt, args.out)
     print(f"Saved checkpoint to {args.out}")
 
 
