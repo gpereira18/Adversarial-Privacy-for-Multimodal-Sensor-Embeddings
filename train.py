@@ -24,14 +24,18 @@ def parse_args():
                    choices=["none", "layer4", "all"])
     p.add_argument("--lr_backbone", type=float, default=1e-4)
     p.add_argument("--backbone_warmup", type=int, default=10)
+    p.add_argument("--val_subject", type=int, default=8)
+    p.add_argument("--seed", type=int, default=0)
     p.add_argument("--out", type=str, default="checkpoints/model.pt")
     return p.parse_args()
 
 
 def main():
     args = parse_args()
+    torch.manual_seed(args.seed)
     print(f"Config: lambda_max={args.lambda_max} lr_probe={args.lr_probe} "
-          f"k={args.k} warmup_epochs={args.warmup_epochs} epochs={args.epochs}")
+          f"k={args.k} warmup_epochs={args.warmup_epochs} epochs={args.epochs} "
+          f"val_subject={args.val_subject} seed={args.seed}")
 
     if torch.backends.mps.is_available():
         device = "mps"
@@ -43,7 +47,7 @@ def main():
 
     print("Loading data...")
     train_loader, val_loader = build_loso_dataloaders(
-        root_dir="UTD-MHAD", val_subject=8, batch_size=32
+        root_dir="UTD-MHAD", val_subject=args.val_subject, batch_size=32
     )
     print(f"Train batches: {len(train_loader)}, Val batches: {len(val_loader)}")
 
