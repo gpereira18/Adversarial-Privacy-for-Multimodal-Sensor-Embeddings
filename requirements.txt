@@ -1,6 +1,8 @@
 torch>=2.0
 torchvision>=0.15
 scipy
+scikit-learn
+matplotlib
 transformers>=4.38
 opacus>=1.4
 pyyaml
