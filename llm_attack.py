@@ -144,6 +144,9 @@ def main():
         return out[:, tok_ids]
 
     best = 0.0
+    best_acc = None
+    best_epoch = 0
+    patience, since_best = 20, 0
     for epoch in range(1, args.epochs + 1):
         adapter.train()
         perm = tr[torch.randperm(len(tr))]
@@ -159,16 +162,25 @@ def main():
             preds = torch.cat([forward(te[i:i + args.batch_size]).argmax(dim=1)
                                for i in range(0, len(te), args.batch_size)])
             acc = accuracy_by_modality(preds.cpu(), y_te_cpu, mods_te)
-        best = max(best, acc["all"])
+
+        if acc["all"] > best:
+            best, best_acc, best_epoch, since_best = acc["all"], acc, epoch, 0
+        else:
+            since_best += 1
+
         if epoch % 10 == 0 or epoch == args.epochs:
             per_mod = "  ".join(f"{m}={acc[m]:.3f}" for m in sorted(acc) if m != "all")
             print(f"Epoch {epoch:3d} | llm acc all={acc['all']:.3f}  ({per_mod})")
 
+        if since_best >= patience:
+            print(f"early stop at epoch {epoch} (no improvement for {patience} epochs)")
+            break
+
     print(f"\n=== LLM {args.target} attack ===")
-    print(f"final={acc['all']:.3f}  best={best:.3f}  majority-class={majority:.3f}")
-    for m in sorted(acc):
+    print(f"best={best:.3f}  (epoch {best_epoch})  majority-class={majority:.3f}")
+    for m in sorted(best_acc):
         if m != "all":
-            print(f"  {m}: {acc[m]:.3f}")
+            print(f"  {m}: {best_acc[m]:.3f}")
 
 
 if __name__ == "__main__":
