@@ -100,6 +100,14 @@ def main():
 
     tr = [i for i, t in enumerate(trials) if t != args.test_trial]
     te = [i for i, t in enumerate(trials) if t == args.test_trial]
+
+    raw_norm = X.norm(dim=1).mean().item()
+    mu = X[tr].mean(dim=0, keepdim=True)
+    sd = X[tr].std(dim=0, keepdim=True) + 1e-6
+    X = (X - mu) / sd
+    print(f"standardised attacker inputs: raw mean-norm={raw_norm:.1f} -> "
+          f"standardised mean-norm={X.norm(dim=1).mean().item():.1f}")
+
     X_tr, y_tr = X[tr].to(device), y[tr].to(device)
     X_te, y_te = X[te].to(device), y[te].to(device)
     mods_te = [mods[i] for i in te]

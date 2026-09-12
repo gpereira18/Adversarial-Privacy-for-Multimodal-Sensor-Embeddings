@@ -75,6 +75,13 @@ def main():
     mods_te = [mods[i] for i in te.tolist()]
     y_te_cpu = y[te].clone()
 
+    raw_norm = X.norm(dim=1).mean().item()
+    mu = X[tr].mean(dim=0, keepdim=True)
+    sd = X[tr].std(dim=0, keepdim=True) + 1e-6
+    X = (X - mu) / sd
+    print(f"standardised attacker inputs: raw mean-norm={raw_norm:.1f} -> "
+          f"standardised mean-norm={X.norm(dim=1).mean().item():.1f}")
+
     majority = max(Counter(y[te].tolist()).values()) / len(te)
     print(f"target={args.target}  classes={n_classes}  train={len(tr)}  test={len(te)}  "
           f"majority-class={majority:.3f}")
