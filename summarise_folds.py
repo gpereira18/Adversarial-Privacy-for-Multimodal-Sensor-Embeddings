@@ -7,7 +7,7 @@ EPOCH_RE = re.compile(
     r"task all=([\d.]+) \(imu=([\d.]+) rgb=([\d.]+)\).*?"
     r"probe all=([\d.]+) \(imu=([\d.]+) rgb=([\d.]+)\)"
 )
-ATTACK_RE = re.compile(r"final=([\d.]+)\s+best=([\d.]+)\s+majority-class=([\d.]+)")
+ATTACK_RE = re.compile(r"(?:final=[\d.]+\s+)?best=([\d.]+)(?:\s+\(epoch \d+\))?\s+majority-class=([\d.]+)")
 ATTACK_MOD_RE = re.compile(r"^\s+(imu|rgb): ([\d.]+)$", re.M)
 
 
@@ -30,7 +30,7 @@ def parse_attack(path):
     m = ATTACK_RE.search(text)
     if not m:
         return None
-    out = {"attack_all": float(m.group(1)), "chance": float(m.group(3))}
+    out = {"attack_all": float(m.group(1)), "chance": float(m.group(2))}
     for mod, val in ATTACK_MOD_RE.findall(text):
         out[f"attack_{mod}"] = float(val)
     return out
@@ -82,9 +82,12 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--tag", default="lam025")
     p.add_argument("--logdir", default="logs")
+    p.add_argument("--attack_prefix", default="attack",
+                    help="e.g. 'attack' for logs/attack_fold*.log, "
+                         "'llm_attack' for logs/llm_attack_fold*.log")
     args = p.parse_args()
     summarise(
-        args.tag,
+        f"{args.tag} [{args.attack_prefix}]",
         f"{args.logdir}/fold*_{args.tag}.log",
-        f"{args.logdir}/attack_fold*_{args.tag}.log",
+        f"{args.logdir}/{args.attack_prefix}_fold*_{args.tag}.log",
     )
