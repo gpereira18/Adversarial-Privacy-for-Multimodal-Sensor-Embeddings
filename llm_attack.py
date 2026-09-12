@@ -10,9 +10,26 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from attack import accuracy_by_modality
 
 PROMPTS = {
-    "subject": "Which subject performed this? Answer:",
-    "activity": "Which activity is this? Answer:",
+    "subject": ("Recording:", " Which subject performed this? Answer:"),
+    "activity": ("Recording:", " Which activity is this? Answer:"),
 }
+
+
+class Adapter(nn.Module):
+    def __init__(self, in_dim, d_model, n_soft):
+        super().__init__()
+        self.n_soft = n_soft
+        self.d_model = d_model
+        self.net = nn.Sequential(
+            nn.Linear(in_dim, d_model),
+            nn.GELU(),
+            nn.Linear(d_model, n_soft * d_model),
+        )
+        self.norm = nn.LayerNorm(d_model)
+
+    def forward(self, x):
+        h = self.net(x).view(-1, self.n_soft, self.d_model)
+        return self.norm(h)
 
 
 def parse_args():
@@ -21,7 +38,8 @@ def parse_args():
     p.add_argument("--target", type=str, default="subject", choices=["subject", "activity"])
     p.add_argument("--model", type=str, default="Qwen/Qwen2.5-0.5B")
     p.add_argument("--test_trial", type=int, default=4)
-    p.add_argument("--epochs", type=int, default=60)
+    p.add_argument("--n_soft", type=int, default=8)
+    p.add_argument("--epochs", type=int, default=150)
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--batch_size", type=int, default=32)
     return p.parse_args()
@@ -97,22 +115,30 @@ def main():
     print(f"label strings: {' '.join(labels)}")
 
     d_model = llm.get_input_embeddings().embedding_dim
-    adapter = nn.Linear(X.shape[1], d_model).to(device)
+    adapter = Adapter(X.shape[1], d_model, args.n_soft).to(device)
     opt = torch.optim.Adam(adapter.parameters(), lr=args.lr)
     print(f"LLM {args.model} frozen ({sum(p.numel() for p in llm.parameters())/1e6:.0f}M), "
-          f"adapter trainable ({sum(p.numel() for p in adapter.parameters())/1e6:.2f}M)")
+          f"adapter trainable ({sum(p.numel() for p in adapter.parameters())/1e6:.2f}M), "
+          f"soft tokens={args.n_soft}")
 
-    prompt_ids = tokenizer.encode(PROMPTS[args.target], add_special_tokens=False)
+    pre_text, post_text = PROMPTS[args.target]
+    pre_ids = tokenizer.encode(pre_text, add_special_tokens=False)
+    post_ids = tokenizer.encode(post_text, add_special_tokens=False)
     with torch.no_grad():
-        prompt_emb = llm.get_input_embeddings()(torch.tensor(prompt_ids, device=device))
+        emb_table = llm.get_input_embeddings()
+        pre_emb = emb_table(torch.tensor(pre_ids, device=device))
+        post_emb = emb_table(torch.tensor(post_ids, device=device))
 
     X, y = X.to(device), y.to(device)
     tr, te = tr.to(device), te.to(device)
 
     def forward(idx):
-        soft = adapter(X[idx]).unsqueeze(1)
-        text = prompt_emb.unsqueeze(0).expand(len(idx), -1, -1)
-        seq = torch.cat([soft, text], dim=1)
+        b = len(idx)
+        seq = torch.cat([
+            pre_emb.unsqueeze(0).expand(b, -1, -1),
+            adapter(X[idx]),
+            post_emb.unsqueeze(0).expand(b, -1, -1),
+        ], dim=1)
         mask = torch.ones(seq.shape[:2], dtype=torch.long, device=device)
         out = llm(inputs_embeds=seq, attention_mask=mask).logits[:, -1, :]
         return out[:, tok_ids]
