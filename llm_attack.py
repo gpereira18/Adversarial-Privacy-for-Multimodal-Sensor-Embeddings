@@ -61,10 +61,10 @@ def label_token_ids(tokenizer, labels):
         toks = tokenizer.encode(" " + s, add_special_tokens=False)
         if not toks:
             raise SystemExit(f"label {s!r} tokenised to nothing")
-        ids.append(toks[0])
+        ids.append(toks[-1])
     if len(set(ids)) != len(ids):
         dupes = [s for s, i in zip(labels, ids) if ids.count(i) > 1]
-        raise SystemExit(f"label first-tokens collide for {dupes} — pick different label strings")
+        raise SystemExit(f"label tokens collide for {dupes} — pick different label strings")
     return torch.tensor(ids)
 
 
