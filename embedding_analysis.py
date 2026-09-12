@@ -57,19 +57,30 @@ def verification(d, seed=0, n_pairs=20000):
     tr = ~d["heldout"]
     X = l2norm(d["emb"][tr])
     subj = d["subject"][tr]
+    act = d["activity"][tr]
 
-    idx_by_subj = {s: np.flatnonzero(subj == s) for s in np.unique(subj)}
+    idx_by_act_subj = {}
+    for a in np.unique(act):
+        by_subj = {s: np.flatnonzero((act == a) & (subj == s)) for s in np.unique(subj[act == a])}
+        by_subj = {s: idx for s, idx in by_subj.items() if len(idx) >= 1}
+        if len(by_subj) >= 2:
+            idx_by_act_subj[a] = by_subj
+
     same, diff = [], []
+    activities = list(idx_by_act_subj)
     for _ in range(n_pairs // 2):
-        s = rng.choice(list(idx_by_subj))
-        if len(idx_by_subj[s]) < 2:
-            continue
-        i, j = rng.choice(idx_by_subj[s], 2, replace=False)
-        same.append(float(X[i] @ X[j]))
+        a = rng.choice(activities)
+        by_subj = idx_by_act_subj[a]
+        subjects = list(by_subj)
 
-        a, b = rng.choice(list(idx_by_subj), 2, replace=False)
-        i = rng.choice(idx_by_subj[a])
-        j = rng.choice(idx_by_subj[b])
+        s = rng.choice(subjects)
+        if len(by_subj[s]) >= 2:
+            i, j = rng.choice(by_subj[s], 2, replace=False)
+            same.append(float(X[i] @ X[j]))
+
+        s1, s2 = rng.choice(subjects, 2, replace=False)
+        i = rng.choice(by_subj[s1])
+        j = rng.choice(by_subj[s2])
         diff.append(float(X[i] @ X[j]))
 
     scores = np.array(same + diff)
