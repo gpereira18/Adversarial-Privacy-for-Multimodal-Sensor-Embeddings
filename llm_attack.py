@@ -105,7 +105,7 @@ def main():
           f"majority-class={majority:.3f}")
 
     tokenizer = AutoTokenizer.from_pretrained(args.model)
-    llm = AutoModelForCausalLM.from_pretrained(args.model).to(device)
+    llm = AutoModelForCausalLM.from_pretrained(args.model, dtype=torch.float32).to(device)
     llm.eval()
     for p in llm.parameters():
         p.requires_grad = False
