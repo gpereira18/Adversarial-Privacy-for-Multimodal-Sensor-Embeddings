@@ -18,6 +18,12 @@ def parse_args():
     p.add_argument("--modality", type=str, default="imu", choices=["all", "imu", "rgb"])
     p.add_argument("--activities", type=str, default="all",
                    help="'all' or comma-separated 1-indexed activity ids")
+    p.add_argument("--pairing", type=str, default="gallery_probe",
+                   choices=["gallery_probe", "all"],
+                   help="gallery_probe compares probe-trial samples against the other "
+                        "trials, matching the attacker's train/test split; all compares "
+                        "every pair, which lets same-session trials inflate the gap")
+    p.add_argument("--probe_trial", type=int, default=4)
     p.add_argument("--per_activity", action="store_true",
                    help="print the full per-activity breakdown, not just the summary")
     return p.parse_args()
@@ -33,6 +39,7 @@ def load(path, modality):
         "emb": d["embedding"].numpy()[keep],
         "subject": d["subject"].numpy()[keep],
         "activity": d["activity"].numpy()[keep],
+        "trial": d["trial"].numpy()[keep],
     }
 
 
@@ -40,16 +47,30 @@ def l2norm(x):
     return x / (np.linalg.norm(x, axis=1, keepdims=True) + 1e-12)
 
 
-def activity_similarities(d, activities):
+def pair_indices(trial, pairing, probe_trial):
+    if pairing == "all":
+        return np.triu_indices(len(trial), k=1)
+    probe = np.flatnonzero(trial == probe_trial)
+    gallery = np.flatnonzero(trial != probe_trial)
+    if len(probe) == 0 or len(gallery) == 0:
+        return None
+    i, j = np.meshgrid(probe, gallery, indexing="ij")
+    return i.ravel(), j.ravel()
+
+
+def activity_similarities(d, activities, pairing="gallery_probe", probe_trial=4):
     rows, same_pool, diff_pool = [], [], []
     for a in activities:
         m = d["activity"] == a
         subj = d["subject"][m]
         if len(subj) < 2:
             continue
+        idx = pair_indices(d["trial"][m], pairing, probe_trial)
+        if idx is None:
+            continue
+        i, j = idx
         X = l2norm(d["emb"][m])
         sim = X @ X.T
-        i, j = np.triu_indices(len(subj), k=1)
         s = sim[i, j]
         same = subj[i] == subj[j]
         if same.sum() == 0 or (~same).sum() == 0:
@@ -160,10 +181,12 @@ def main():
     else:
         activities = [int(a) - 1 for a in args.activities.split(",")]
 
-    results = [activity_similarities(d, activities) for d in raw]
+    results = [activity_similarities(d, activities, args.pairing, args.probe_trial)
+               for d in raw]
     summaries = [summarise(rows, sp, dp) for rows, sp, dp in results]
 
-    print(f"\n=== identity gap over {len(activities)} activities (modality={args.modality}) ===")
+    print(f"\n=== identity gap over {len(activities)} activities "
+          f"(modality={args.modality}, pairing={args.pairing}) ===")
     hdr = (f"{'model':<22}{'n_act':>7}{'same':>9}{'diff':>9}"
            f"{'gap':>9}{'gap_sd':>9}{'pairs':>10}")
     print(hdr)
