@@ -9,11 +9,10 @@ class PIISpan:
     start: int
     end: int
     entity_type: str
-    score: float  # presidio confidence score
+    score: float
 
 
 def _build_engine() -> AnalyzerEngine:
-    # Tell presidio to use en_core_web_lg
     provider = NlpEngineProvider(nlp_configuration={
         "nlp_engine_name": "spacy",
         "models": [{"lang_code": "en", "model_name": "en_core_web_lg"}],
@@ -22,29 +21,15 @@ def _build_engine() -> AnalyzerEngine:
 
 
 class PIIDetector:
-    """
-    Wraps presidio-analyzer to detect PII in text.
-
-    Produces:
-      - spans: list of PIISpan (start, end, entity_type, confidence)
-      - masked text: original text with PII replaced by [ENTITY_TYPE] tokens
-      - binary label: 1 if any PII detected, 0 otherwise
-    """
-
     def __init__(self):
         self._engine = _build_engine()
 
     def detect(self, text: str) -> list[PIISpan]:
         results = self._engine.analyze(text=text, language="en")
-        # Sort by position so masking works left-to-right
         results = sorted(results, key=lambda r: r.start)
         return [PIISpan(r.start, r.end, r.entity_type, r.score) for r in results]
 
     def mask(self, text: str) -> tuple[str, list[PIISpan]]:
-        """
-        Returns (masked_text, spans).
-        Each detected span is replaced with [ENTITY_TYPE].
-        """
         spans = self.detect(text)
         masked = []
         cursor = 0

@@ -205,7 +205,3 @@ class MultimodalTrainer:
             "probe_n_classes": len(probe_pred_counts),
             "probe_top_share": top_share,
         }
-            
-
-           
-            

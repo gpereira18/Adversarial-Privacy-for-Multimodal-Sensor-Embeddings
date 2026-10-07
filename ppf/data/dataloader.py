@@ -150,6 +150,3 @@ if __name__ == "__main__":
     for batch in range(10):
         batch = next(iter(train_loader))
         print(batch["input_tensor"][0].shape, batch["modality"][0], batch["activity"][0])
-
-
-        

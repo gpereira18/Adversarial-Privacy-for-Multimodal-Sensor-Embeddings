@@ -3,8 +3,6 @@ import torch.nn as nn
 
 
 class TaskHead(nn.Module):
-    """Linear classifier on [CLS] embedding → task logits."""
-
     def __init__(self, hidden_size: int = 768, num_classes: int = 2, dropout: float = 0.1):
         super().__init__()
         self.net = nn.Sequential(

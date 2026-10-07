@@ -85,7 +85,6 @@ if __name__ == "__main__":
     study = optuna.create_study(directions=["maximize", "minimize"])
     study.optimize(objective, n_trials=N_TRIALS)
 
-    print("\n=== Pareto front ===")
     for t in study.best_trials:
         task_score, probe_score = t.values
         top = t.user_attrs.get("top_share", float("nan"))

@@ -11,3 +11,8 @@ UTD-MHAD/*
 graphify-out/*
 md/*
 .claude/
+CLAUDE.md
+configs/
+figures/
+run_folds.sh
+run_llm_sweep.sh

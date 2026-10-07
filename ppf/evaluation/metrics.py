@@ -14,14 +14,6 @@ def compute_metrics(
     data_loader: DataLoader,
     device: str = "cpu",
 ) -> dict:
-    """
-    Compute evaluation metrics on a dataset.
-
-    Returns:
-        task_accuracy:  fraction of correct task predictions (higher = better utility)
-        probe_accuracy: fraction of correct PII predictions by the probe (lower = more private)
-        privacy_score:  1 - probe_accuracy (higher = more private, for easy plotting)
-    """
     encoder.eval()
     task_head.eval()
     probe.eval()

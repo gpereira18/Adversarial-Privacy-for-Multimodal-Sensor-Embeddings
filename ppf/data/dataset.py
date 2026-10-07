@@ -10,16 +10,9 @@ def _spans_to_token_labels(
     spans: list,
     offset_mapping: list[tuple[int, int]],
 ) -> list[int]:
-    """
-    Map presidio character-level PII spans to token-level binary labels.
-
-    For each token, if its character range overlaps with ANY PII span → label 1.
-    Special tokens (offset (0,0)) and padding → label 0 (masked out in loss anyway).
-    """
     labels = []
     for start, end in offset_mapping:
         if start == 0 and end == 0:
-            # Special token ([CLS], [SEP], [PAD])
             labels.append(0)
             continue
         is_pii = any(
@@ -31,16 +24,6 @@ def _spans_to_token_labels(
 
 
 class TextWithPII(Dataset):
-    """
-    Text classification dataset with token-level PII labels.
-
-    Each sample returns:
-        input_ids:        (seq_len,)   tokenized text
-        attention_mask:   (seq_len,)   1 = real token, 0 = padding
-        task_label:       int          class label (e.g. sentiment)
-        pii_token_labels: (seq_len,)   1 = PII token, 0 = non-PII token
-    """
-
     def __init__(
         self,
         dataset_name: str = "sst2",
@@ -67,7 +50,6 @@ class TextWithPII(Dataset):
         self.texts = list(ds[text_col])
         self.task_labels = list(ds[label_col])
 
-        # Pre-compute PII spans and token-level labels
         print(f"Detecting PII for {len(self.texts)} samples ({split} split)...")
         detector = PIIDetector()
 
@@ -82,7 +64,6 @@ class TextWithPII(Dataset):
             if spans:
                 pii_sample_count += 1
 
-        # Tokenize all texts with offset mapping for span alignment
         self.encodings = self.tokenizer(
             self.texts,
             max_length=self.max_length,
@@ -92,7 +73,6 @@ class TextWithPII(Dataset):
             return_tensors="pt",
         )
 
-        # Build token-level PII labels
         self.pii_token_labels = []
         for i in range(len(self.texts)):
             offsets = self.encodings["offset_mapping"][i].tolist()
@@ -122,14 +102,13 @@ class TextWithPII(Dataset):
 
 
 def _compute_pii_pos_weight(dataset: TextWithPII) -> float:
-    """Compute pos_weight = n_non_pii / n_pii for token-level BCE."""
     n_pii = 0
     n_non_pii = 0
     for i in range(len(dataset)):
         mask = dataset.encodings["attention_mask"][i].tolist()
         labels = dataset.pii_token_labels[i]
         for m, l in zip(mask, labels):
-            if m == 1:  # real token only
+            if m == 1:
                 if l == 1:
                     n_pii += 1
                 else:
@@ -138,7 +117,7 @@ def _compute_pii_pos_weight(dataset: TextWithPII) -> float:
         print("  WARNING: no PII tokens found — pos_weight defaults to 1.0")
         return 1.0
     raw_pw = n_non_pii / n_pii
-    pw = min(raw_pw, 20.0)  # cap to prevent probe oscillation
+    pw = min(raw_pw, 20.0)
     print(f"  PII pos_weight: {pw:.1f} (raw={raw_pw:.1f}, {n_non_pii} non-PII / {n_pii} PII tokens)")
     return pw
 
@@ -152,7 +131,6 @@ def build_dataloaders(
     max_train_samples: int | None = None,
     max_test_samples: int | None = None,
 ) -> tuple[DataLoader, DataLoader, float]:
-    """Returns (train_loader, test_loader, pii_pos_weight)."""
     test_split = "validation" if dataset_name == "sst2" else "test"
 
     train_ds = TextWithPII(dataset_name, "train", tokenizer_name, max_length, max_train_samples)
